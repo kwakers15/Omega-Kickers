@@ -5,10 +5,13 @@ const server = http.createServer()
 const io = new Server(server)
 const port = 8091
 
-// let config = {
-//   numberOfDecks: 2,
-//   rankLimit: 2
-// }
+// replace with mongo
+let config = {
+  ballSpeed: 5,
+  playerSpeed: 10,
+  obstacles: false,
+  keepers: true
+}
 // let gameState = createEmptyGame(["player1", "player2"], config)
 
 // function emitUpdatedCardsForPlayers(cards: Card[], newGame = false) {
@@ -25,99 +28,102 @@ const port = 8091
 //   })
 // }
 
-// io.on('connection', client => {
-//   function emitGameState() {
-//     const counts = computePlayerCardCounts(gameState)
-//     console.log(counts)
-//     const playersWithOneOrFewerCards: string[] = []
-//     for (const [index, count] of counts.entries()) {
-//       if (count <= 1) {
-//         playersWithOneOrFewerCards.push(gameState.playerNames[index])
-//       }
-//     }
-//     client.emit(
-//       "game-state",
-//       gameState.currentTurnPlayerIndex,
-//       gameState.phase,
-//       gameState.playCount,
-//       playersWithOneOrFewerCards
-//     )
-//   }
+io.on('connection', client => {
+  // function emitGameState() {
+  //   const counts = computePlayerCardCounts(gameState)
+  //   console.log(counts)
+  //   const playersWithOneOrFewerCards: string[] = []
+  //   for (const [index, count] of counts.entries()) {
+  //     if (count <= 1) {
+  //       playersWithOneOrFewerCards.push(gameState.playerNames[index])
+  //     }
+  //   }
+  //   client.emit(
+  //     "game-state",
+  //     gameState.currentTurnPlayerIndex,
+  //     gameState.phase,
+  //     gameState.playCount,
+  //     playersWithOneOrFewerCards
+  //   )
+  // }
 
-//   console.log("New client")
-//   let playerIndex: number | null | "all" = null
-//   client.on('player-index', n => {
-//     playerIndex = n
-//     console.log("playerIndex set", n)
-//     client.join(String(n))
-//     if (typeof playerIndex === "number") {
-//       client.emit(
-//         "all-cards",
-//         filterCardsForPlayerPerspective(Object.values(gameState.cardsById), playerIndex).filter(card => card.locationType !== "unused"),
-//       )
-//     } else {
-//       client.emit(
-//         "all-cards",
-//         Object.values(gameState.cardsById),
-//       )
-//     }
-//     emitGameState()
-//   })
+  // console.log("New client")
+  // let playerIndex: number | null | "all" = null
+  // client.on('player-index', n => {
+  //   playerIndex = n
+  //   console.log("playerIndex set", n)
+  //   client.join(String(n))
+  //   if (typeof playerIndex === "number") {
+  //     client.emit(
+  //       "all-cards",
+  //       filterCardsForPlayerPerspective(Object.values(gameState.cardsById), playerIndex).filter(card => card.locationType !== "unused"),
+  //     )
+  //   } else {
+  //     client.emit(
+  //       "all-cards",
+  //       Object.values(gameState.cardsById),
+  //     )
+  //   }
+  //   emitGameState()
+  // })
 
-//   client.on('get-config', () => {
-//     client.emit('get-config-reply', config)
-//   })
+  client.on('get-config', () => {
+    client.emit('get-config-reply', config)
+  })
 
-//   client.on('update-config', (newConfig: Config) => {
-//     let result = true
-//     if (typeof newConfig.numberOfDecks !== 'number' || typeof newConfig.rankLimit !== 'number') {
-//       result = false
-//     } else {
-//       config = { ...newConfig }
-//     }
-//     setTimeout(() => {
-//       client.emit('update-config-reply', result)
-//     }, 2000)
-//   })
+  client.on('update-config', (newConfig: { ballSpeed: number, playerSpeed: number, obstacles: boolean, keepers: boolean }) => {
+    let result = { updated: false, ballError: false, playerError: false }
+    if (typeof newConfig.ballSpeed !== 'number') {
+      result.ballError = true
+    } else if (typeof newConfig.playerSpeed !== 'number') {
+      result.playerError = true
+    } else {
+      result.updated = true
+      config = { ...newConfig }
+    }
+    setTimeout(() => {
+      client.emit('update-config-reply', result)
+    }, 2000)
+  })
 
-//   client.on("action", (action: Action) => {
-//     if (typeof playerIndex === "number") {
-//       const updatedCards = doAction(gameState, { ...action, playerIndex })
-//       emitUpdatedCardsForPlayers(updatedCards)
-//     } else {
-//       // no actions allowed from "all"
-//     }
-//     io.to("all").emit(
-//       "updated-cards",
-//       Object.values(gameState.cardsById),
-//     )
-//     const counts = computePlayerCardCounts(gameState)
-//     console.log(counts)
-//     const playersWithOneOrFewerCards: string[] = []
-//     for (const [index, count] of counts.entries()) {
-//       if (count <= 1) {
-//         playersWithOneOrFewerCards.push(gameState.playerNames[index])
-//       }
-//     }
-//     io.emit(
-//       "game-state",
-//       gameState.currentTurnPlayerIndex,
-//       gameState.phase,
-//       gameState.playCount,
-//       playersWithOneOrFewerCards
-//     )
-//   })
+  // client.on("action", (action: Action) => {
+  //   if (typeof playerIndex === "number") {
+  //     const updatedCards = doAction(gameState, { ...action, playerIndex })
+  //     emitUpdatedCardsForPlayers(updatedCards)
+  //   } else {
+  //     // no actions allowed from "all"
+  //   }
+  //   io.to("all").emit(
+  //     "updated-cards",
+  //     Object.values(gameState.cardsById),
+  //   )
+  //   const counts = computePlayerCardCounts(gameState)
+  //   console.log(counts)
+  //   const playersWithOneOrFewerCards: string[] = []
+  //   for (const [index, count] of counts.entries()) {
+  //     if (count <= 1) {
+  //       playersWithOneOrFewerCards.push(gameState.playerNames[index])
+  //     }
+  //   }
+  //   io.emit(
+  //     "game-state",
+  //     gameState.currentTurnPlayerIndex,
+  //     gameState.phase,
+  //     gameState.playCount,
+  //     playersWithOneOrFewerCards
+  //   )
+  // })
 
-//   client.on("new-game", () => {
-//     gameState = createEmptyGame(gameState.playerNames, config)
-//     const updatedCards = Object.values(gameState.cardsById)
-//     emitUpdatedCardsForPlayers(updatedCards, true)
-//     io.to("all").emit(
-//       "all-cards",
-//       updatedCards,
-//     )
-//     emitGameState()
-//   })
-// })
+  // client.on("new-game", () => {
+  //   gameState = createEmptyGame(gameState.playerNames, config)
+  //   const updatedCards = Object.values(gameState.cardsById)
+  //   emitUpdatedCardsForPlayers(updatedCards, true)
+  //   io.to("all").emit(
+  //     "all-cards",
+  //     updatedCards,
+  //   )
+  //   emitGameState()
+  // })
+})
 server.listen(port)
 console.log(`Game server listening on port ${port}`)
