@@ -1,15 +1,15 @@
-<template>
+<!-- <template>
   <div>
     <b-button class="mx-2 my-2" size="sm" @click="socket.emit('new-game')">New Game</b-button>
     <b-badge class="mr-2 mb-2" :variant="myTurn ? 'primary' : 'secondary'">turn: {{ currentTurnPlayerIndex }}</b-badge>
     <b-badge class="mr-2 mb-2">{{ phase }}</b-badge>
     <h5>Players with one or fewer cards in hand:</h5>
-    <div v-if="playersWithOneOrFewerCards.length > 0" :style="{margin: '0 0 10px'}">
+    <div v-if="playersWithOneOrFewerCards.length > 0" :style="{ margin: '0 0 10px' }">
       <div v-for="player in playersWithOneOrFewerCards">
         <span>{{ player }}</span>
       </div>
     </div>
-    <div v-else :style="{margin: '0 0 10px'}">
+    <div v-else :style="{ margin: '0 0 10px' }">
       None
     </div>
     <div v-for="card in cards" :key="card.id">
@@ -22,8 +22,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, Ref } from 'vue'
 import { io } from "socket.io-client"
-import { Card, GamePhase, Action, formatCard, CardId, getLastPlayed } from "../../../server/model"
-import AnimatedCard from "../components/AnimatedCard.vue"
+import { Card, GamePhase, Action, formatCard, CardId, getLastPlayed } from "../../server/model"
+import AnimatedCard from "./AnimatedCard.vue"
 
 // props
 interface Props {
@@ -103,4 +103,4 @@ async function applyUpdatedCards(updatedCards: Card[]) {
     }
   }
 }
-</script>
+</script> -->

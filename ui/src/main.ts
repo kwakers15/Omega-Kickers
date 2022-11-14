@@ -1,8 +1,10 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
 import App from '@/App.vue'
-import Game from '@/views/Game.vue'
+import Game from '@/components/Game.vue'
 import Config from '@/components/Config.vue'
+import Home from '@/components/Home.vue'
+import TeamSelection from '@/components/TeamSelection.vue'
 
 import { BootstrapVue, BootstrapVueIcons } from "bootstrap-vue"
 
@@ -21,13 +23,21 @@ const router = new VueRouter({
       component: Config,
     },
     {
-      path: "/:playerIndex",
+      path: "/game/:playerIndex",
       component: Game,
       props(route) {
         return {
           playerIndex: route.params.playerIndex
         }
       }
+    },
+    {
+      path: "/home",
+      component: Home
+    },
+    {
+      path: "/team/:playerIndex",
+      component: TeamSelection
     }
   ],
 })
