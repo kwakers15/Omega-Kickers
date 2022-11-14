@@ -1,17 +1,23 @@
 import http from "http"
 import { Server } from "socket.io"
+import { Collection, Db, MongoClient, ObjectId } from 'mongodb'
 
 const server = http.createServer()
 const io = new Server(server)
 const port = 8091
 
-// replace with mongo
-let config = {
-  ballSpeed: 5,
-  playerSpeed: 10,
-  obstacles: false,
-  keepers: true
+// mongodb
+const url = 'mongodb://127.0.0.1:27017'
+const client = new MongoClient(url)
+let db: Db
+let config: Collection
+
+let currentConfig = {}
+
+async function initializeDefaultConfig() {
+  currentConfig = await config.findOne({})
 }
+
 // let gameState = createEmptyGame(["player1", "player2"], config)
 
 // function emitUpdatedCardsForPlayers(cards: Card[], newGame = false) {
@@ -29,6 +35,7 @@ let config = {
 // }
 
 io.on('connection', client => {
+  initializeDefaultConfig()
   // function emitGameState() {
   //   const counts = computePlayerCardCounts(gameState)
   //   console.log(counts)
@@ -68,7 +75,7 @@ io.on('connection', client => {
   // })
 
   client.on('get-config', () => {
-    client.emit('get-config-reply', config)
+    client.emit('get-config-reply', currentConfig)
   })
 
   client.on('update-config', (newConfig: { ballSpeed: number, playerSpeed: number, obstacles: boolean, keepers: boolean }) => {
@@ -79,7 +86,7 @@ io.on('connection', client => {
       result.playerError = true
     } else {
       result.updated = true
-      config = { ...newConfig }
+      currentConfig = { ...newConfig }
     }
     setTimeout(() => {
       client.emit('update-config-reply', result)
@@ -125,5 +132,13 @@ io.on('connection', client => {
   //   emitGameState()
   // })
 })
-server.listen(port)
-console.log(`Game server listening on port ${port}`)
+
+client.connect().then(() => {
+  console.log('Connected successfully to MongoDB')
+  db = client.db('omega-kickers')
+  config = db.collection('config')
+
+  server.listen(port)
+  console.log(`Game server listening on port ${port}`)
+})
+
