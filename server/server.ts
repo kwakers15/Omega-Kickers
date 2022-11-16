@@ -1,22 +1,84 @@
-import http from "http"
-import { Server } from "socket.io"
+import express, { NextFunction, Request, Response } from 'express'
+import MongoStore from 'connect-mongo'
+import session from 'express-session'
 import { Collection, Db, MongoClient, ObjectId } from 'mongodb'
-
-const server = http.createServer()
-const io = new Server(server)
-const port = 8091
+import passport from 'passport'
+import { Issuer, Strategy } from 'openid-client'
+import { keycloak } from './secrets'
+import { Server } from 'http'
+// import { Server } from 'socket.io'
+// import http from 'http'
+const app = express()
+const http = require('http').Server(app)
+const io = require('socket.io')(http)
+// const server = http.createServer()
+// const io = new Server()
+const port = 8095
 
 // mongodb
-const url = 'mongodb://127.0.0.1:27017'
-const client = new MongoClient(url)
+const mongoUrl = 'mongodb://127.0.0.1:27017'
+const mongoClient = new MongoClient(mongoUrl)
 let db: Db
 let config: Collection
+let users: Collection
+
+const sessionMiddleware = session({
+  secret: 'changeme',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false },
+
+  store: MongoStore.create({
+    mongoUrl,
+    ttl: 14 * 24 * 60 * 60
+  })
+})
+
+app.use(sessionMiddleware)
+
+app.use(passport.initialize())
+app.use(passport.session())
+passport.serializeUser((user: any, done: any) => {
+  console.log("serializeUser " + JSON.stringify(user))
+  done(null, user)
+})
+passport.deserializeUser((user: any, done: any) => {
+  console.log("deserializeUser " + JSON.stringify(user))
+  done(null, user)
+})
+
+function checkAuthenticated(req: Request, res: Response, next: NextFunction) {
+  if (!req.isAuthenticated()) {
+    res.sendStatus(401)
+    return
+  }
+
+  next()
+}
+
+// app routes
+app.post(
+  "/api/logout",
+  (req, res, next) => {
+    req.logout((err) => {
+      if (err) {
+        return next(err)
+      }
+      res.redirect("/api/login")
+    })
+  }
+)
+
+app.get("/api/user", (req, res) => {
+  res.json(req.user || {})
+})
 
 let currentConfig = {}
 
 async function initializeDefaultConfig() {
   currentConfig = await config.findOne({})
 }
+
 
 // let gameState = createEmptyGame(["player1", "player2"], config)
 
@@ -34,7 +96,7 @@ async function initializeDefaultConfig() {
 //   })
 // }
 
-io.on('connection', client => {
+io.on('connection', (client: any) => {
   initializeDefaultConfig()
   // function emitGameState() {
   //   const counts = computePlayerCardCounts(gameState)
@@ -73,7 +135,6 @@ io.on('connection', client => {
   //   }
   //   emitGameState()
   // })
-
   client.on('get-config', () => {
     client.emit('get-config-reply', currentConfig)
   })
@@ -133,12 +194,50 @@ io.on('connection', client => {
   // })
 })
 
-client.connect().then(() => {
+mongoClient.connect().then(() => {
   console.log('Connected successfully to MongoDB')
-  db = client.db('omega-kickers')
+  db = mongoClient.db('omega-kickers')
   config = db.collection('config')
+  users = db.collection('users')
+  Issuer.discover("http://127.0.0.1:8081/auth/realms/omega-kickers/.well-known/openid-configuration").then(issuer => {
+    const client = new issuer.Client(keycloak)
+    passport.use("oidc", new Strategy(
+      {
+        client,
+        params: {
+          prompt: "login"
+        }
+      },
+      async (tokenSet: any, userInfo: any, done: any) => {
+        const _id = userInfo.preferred_username
+        await users.updateOne(
+          { _id },
+          {
+            $set: {
+              name: userInfo.name
+            }
+          },
+          { upsert: true }
+        )
+        return done(null, userInfo)
+      }
+    ))
+    app.get(
+      "/api/login",
+      passport.authenticate("oidc", { failureRedirect: "/api/login" }),
+      (req, res) => res.redirect("/")
+    )
 
-  server.listen(port)
-  console.log(`Game server listening on port ${port}`)
+    app.get(
+      "/api/login-callback",
+      passport.authenticate("oidc", {
+        successRedirect: "/",
+        failureRedirect: "/api/login",
+      })
+    )
+    http.listen(port, () => {
+      console.log(`Game server listening on port ${port}`)
+    })
+  })
 })
 
