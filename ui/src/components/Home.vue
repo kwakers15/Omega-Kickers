@@ -25,7 +25,9 @@
 </template>
 <script setup lang="ts">
 import { computed, ref, onMounted, provide } from 'vue'
+import { io } from "socket.io-client"
 
+const socket = io()
 const user = ref({} as any)
 let errorMsg = ref(false)
 provide("user", user)
