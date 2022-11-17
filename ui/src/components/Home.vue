@@ -34,6 +34,7 @@ provide("user", user)
 
 onMounted(async () => {
   user.value = await (await fetch("/api/user")).json()
+  socket.emit('token', user.value.token)
 })
 
 function handleCreate() {

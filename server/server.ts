@@ -5,14 +5,10 @@ import { Collection, Db, MongoClient, ObjectId } from 'mongodb'
 import passport from 'passport'
 import { Issuer, Strategy } from 'openid-client'
 import { keycloak } from './secrets'
-import { Server } from 'http'
-// import { Server } from 'socket.io'
-// import http from 'http'
+
 const app = express()
 const http = require('http').Server(app)
 const io = require('socket.io')(http)
-// const server = http.createServer()
-// const io = new Server()
 const port = 8095
 
 // mongodb
@@ -21,6 +17,7 @@ const mongoClient = new MongoClient(mongoUrl)
 let db: Db
 let config: Collection
 let users: Collection
+let tokenMap: Collection
 
 const sessionMiddleware = session({
   secret: 'changeme',
@@ -39,11 +36,11 @@ app.use(sessionMiddleware)
 app.use(passport.initialize())
 app.use(passport.session())
 passport.serializeUser((user: any, done: any) => {
-  console.log("serializeUser " + JSON.stringify(user))
+  // console.log("serializeUser " + JSON.stringify(user))
   done(null, user)
 })
 passport.deserializeUser((user: any, done: any) => {
-  console.log("deserializeUser " + JSON.stringify(user))
+  // console.log("deserializeUser " + JSON.stringify(user))
   done(null, user)
 })
 
@@ -69,8 +66,26 @@ app.post(
   }
 )
 
-app.get("/api/user", (req, res) => {
-  res.json(req.user || {})
+// // objects for mapping userIds to tokens
+// const socketIoTokens: { [key: string]: string } = {}
+// const tokensToUserId: { [key: string]: string } = {}
+
+app.get("/api/user", async (req, res) => {
+  if (req.user) {
+    // if (!socketIoTokens[req.user.preferred_username]) {
+    //   socketIoTokens[req.user.preferred_username] = String(Math.random())
+    //   tokensToUserId[socketIoTokens[req.user.preferred_username]] = req.user.preferred_username
+    // }
+    // res.json({ ...req.user, token: socketIoTokens[req.user.preferred_username] })
+    // return
+    const username = req.user.preferred_username
+    const tokenDocument = await tokenMap.findOne({ username })
+    if (tokenDocument) {
+      res.json({ ...req.user, token: tokenDocument.token })
+      return
+    }
+  }
+  res.json({})
 })
 
 let currentConfig = {}
@@ -97,6 +112,18 @@ async function initializeDefaultConfig() {
 // }
 
 io.on('connection', (client: any) => {
+  client.once("token", async (token: string) => {
+    const usernameDocument = await tokenMap.findOne({ token })
+    if (!usernameDocument) {
+      // shut down this connection
+      console.log('shutting down')
+      return
+    }
+    const username = usernameDocument.username
+    console.log('connected userId is:', username)
+    client.on("this", () => { })
+    client.on("that", () => { })
+  })
   initializeDefaultConfig()
   // function emitGameState() {
   //   const counts = computePlayerCardCounts(gameState)
@@ -199,6 +226,8 @@ mongoClient.connect().then(() => {
   db = mongoClient.db('omega-kickers')
   config = db.collection('config')
   users = db.collection('users')
+  tokenMap = db.collection('tokenMap')
+
   Issuer.discover("http://127.0.0.1:8081/auth/realms/omega-kickers/.well-known/openid-configuration").then(issuer => {
     const client = new issuer.Client(keycloak)
     passport.use("oidc", new Strategy(
@@ -209,12 +238,12 @@ mongoClient.connect().then(() => {
         }
       },
       async (tokenSet: any, userInfo: any, done: any) => {
-        const _id = userInfo.preferred_username
-        await users.updateOne(
-          { _id },
+        const username = userInfo.preferred_username
+        await tokenMap.updateOne(
+          { username },
           {
             $set: {
-              name: userInfo.name
+              token: String(Math.random())
             }
           },
           { upsert: true }
