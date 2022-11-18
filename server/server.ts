@@ -1,23 +1,25 @@
 import express, { NextFunction, Request, Response } from 'express'
 import MongoStore from 'connect-mongo'
 import session from 'express-session'
-import { Collection, Db, MongoClient, ObjectId } from 'mongodb'
+import { Collection, Db, MongoClient } from 'mongodb'
 import passport from 'passport'
 import { Issuer, Strategy } from 'openid-client'
 import { keycloak } from './secrets'
+import { exists } from 'fs'
 
 const app = express()
 const http = require('http').Server(app)
 const io = require('socket.io')(http)
 const port = 8095
+const maxClients = 6
 
 // mongodb
 const mongoUrl = 'mongodb://127.0.0.1:27017'
 const mongoClient = new MongoClient(mongoUrl)
 let db: Db
 let config: Collection
-let users: Collection
 let tokenMap: Collection
+let rooms: Collection
 
 const sessionMiddleware = session({
   secret: 'changeme',
@@ -66,18 +68,8 @@ app.post(
   }
 )
 
-// // objects for mapping userIds to tokens
-// const socketIoTokens: { [key: string]: string } = {}
-// const tokensToUserId: { [key: string]: string } = {}
-
 app.get("/api/user", async (req, res) => {
   if (req.user) {
-    // if (!socketIoTokens[req.user.preferred_username]) {
-    //   socketIoTokens[req.user.preferred_username] = String(Math.random())
-    //   tokensToUserId[socketIoTokens[req.user.preferred_username]] = req.user.preferred_username
-    // }
-    // res.json({ ...req.user, token: socketIoTokens[req.user.preferred_username] })
-    // return
     const username = req.user.preferred_username
     const tokenDocument = await tokenMap.findOne({ username })
     if (tokenDocument) {
@@ -88,12 +80,9 @@ app.get("/api/user", async (req, res) => {
   res.json({})
 })
 
-let currentConfig = {}
-
-async function initializeDefaultConfig() {
-  currentConfig = await config.findOne({})
+function generateRandomSixDigitNumber() {
+  return String(Math.floor(100000 + Math.random() * 900000))
 }
-
 
 // let gameState = createEmptyGame(["player1", "player2"], config)
 
@@ -121,10 +110,87 @@ io.on('connection', (client: any) => {
     }
     const username = usernameDocument.username
     console.log('connected userId is:', username)
-    client.on("this", () => { })
-    client.on("that", () => { })
+
+    client.on('get-config', async () => {
+      client.emit('get-config-reply', await config.findOne({}))
+    })
+
+    client.on('update-config', async (newConfig: { ballSpeed: number, playerSpeed: number, obstacles: boolean, keepers: boolean }) => {
+      let result = { updated: false, ballError: false, playerError: false }
+      if (typeof newConfig.ballSpeed !== 'number') {
+        result.ballError = true
+      } else if (typeof newConfig.playerSpeed !== 'number') {
+        result.playerError = true
+      } else {
+        result.updated = true
+        await config.updateOne(
+          {},
+          {
+            $set: {
+              ballSpeed: newConfig.ballSpeed,
+              playerSpeed: newConfig.playerSpeed,
+              obstacles: newConfig.obstacles,
+              keepers: newConfig.keepers
+            }
+          },
+        )
+      }
+      setTimeout(() => {
+        client.emit('update-config-reply', result)
+      }, 1000)
+    })
+
+
+    // USE SOCKET DISCONNECTED TO REMOVE USERS FROM ROOMS AND DELETE ROOMS WHEN THEY ARE THE LAST ONE
+    client.on('create-room', async (username: string) => {
+      // a little messy but we will never have 1 million rooms open at once
+      let roomId = generateRandomSixDigitNumber()
+      let existingRoom = await rooms.findOne({ roomId })
+      while (existingRoom) {
+        roomId = generateRandomSixDigitNumber()
+        existingRoom = await rooms.findOne({ roomId })
+      }
+      client.join(roomId)
+      rooms.insertOne({
+        roomId,
+        clients: [
+          {
+            _id: client.id,
+            username
+          }
+        ]
+      })
+    })
+
+    client.on('join-room', async (username: string, code: string) => {
+      let result = {
+        exists: false,
+        full: false,
+        joined: false
+      }
+      const room = await rooms.findOne({ roomId: code })
+      if (room) {
+        if (room.clients.length == maxClients) {
+          result.exists = true
+          result.full = true
+        }
+        else {
+          result.joined = true
+          client.join(room.roomId)
+          rooms.updateOne(
+            { roomId: room.roomId },
+            {
+              $set: {
+                clients: [...room.clients, { _id: client.id, username }]
+              }
+            }
+          )
+        }
+      }
+      client.emit('join-room-reply', result)
+    })
   })
-  initializeDefaultConfig()
+
   // function emitGameState() {
   //   const counts = computePlayerCardCounts(gameState)
   //   console.log(counts)
@@ -162,24 +228,7 @@ io.on('connection', (client: any) => {
   //   }
   //   emitGameState()
   // })
-  client.on('get-config', () => {
-    client.emit('get-config-reply', currentConfig)
-  })
 
-  client.on('update-config', (newConfig: { ballSpeed: number, playerSpeed: number, obstacles: boolean, keepers: boolean }) => {
-    let result = { updated: false, ballError: false, playerError: false }
-    if (typeof newConfig.ballSpeed !== 'number') {
-      result.ballError = true
-    } else if (typeof newConfig.playerSpeed !== 'number') {
-      result.playerError = true
-    } else {
-      result.updated = true
-      currentConfig = { ...newConfig }
-    }
-    setTimeout(() => {
-      client.emit('update-config-reply', result)
-    }, 2000)
-  })
 
   // client.on("action", (action: Action) => {
   //   if (typeof playerIndex === "number") {
@@ -225,8 +274,8 @@ mongoClient.connect().then(() => {
   console.log('Connected successfully to MongoDB')
   db = mongoClient.db('omega-kickers')
   config = db.collection('config')
-  users = db.collection('users')
   tokenMap = db.collection('tokenMap')
+  rooms = db.collection('rooms')
 
   Issuer.discover("http://127.0.0.1:8081/auth/realms/omega-kickers/.well-known/openid-configuration").then(issuer => {
     const client = new issuer.Client(keycloak)

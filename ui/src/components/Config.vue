@@ -1,5 +1,6 @@
 <template>
   <div>
+    <Navbar :name="user?.name" />
     <b-jumbotron class="text-center" header="Config Editor">
       <hr class="my-4">
       <h4 class="font-weight-normal">Omega Kickers</h4>
@@ -42,6 +43,7 @@
           </b-overlay>
         </b-col>
       </b-row>
+      <form method="POST" action="/api/logout" id="logoutForm" />
     </b-container>
   </div>
 </template>
@@ -50,6 +52,7 @@
 import { ref, onMounted } from 'vue'
 import { io } from "socket.io-client"
 import ConfigButtonGroup from './ConfigButtonGroup.vue';
+import Navbar from '../components/Navbar.vue'
 
 let currentConfig = ref({ ballSpeed: 0, playerSpeed: 0, obstacles: false, keepers: false })
 let ballSpeedError = ref(false)
@@ -60,14 +63,19 @@ let errorIcon = ref(false)
 let dismissAlert = ref(0)
 let dismissSecs = ref(3)
 const socket = io()
+const user = ref({} as any)
 
-onMounted(() => {
+onMounted(async () => {
   busy.value = true
-  socket.emit('get-config')
-  socket.on('get-config-reply', (config) => {
-    currentConfig.value = { ...config }
-    busy.value = false
-  })
+  user.value = await (await fetch("/api/user")).json()
+  socket.emit('token', user.value.token)
+  setTimeout(() => {
+    socket.emit('get-config')
+    socket.on('get-config-reply', (config) => {
+      currentConfig.value = { ...config }
+      busy.value = false
+    })
+  }, 500)
 })
 
 function switchObstacleToggle() {
