@@ -75,7 +75,7 @@ onMounted(async () => {
       currentConfig.value = { ...config }
       busy.value = false
     })
-  }, 500)
+  }, 400)
 })
 
 function switchObstacleToggle() {

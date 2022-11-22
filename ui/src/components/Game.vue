@@ -104,3 +104,23 @@ async function applyUpdatedCards(updatedCards: Card[]) {
   }
 }
 </script> -->
+<template>
+
+</template>
+<script setup lang="ts">
+import { onMounted, ref, Ref } from 'vue'
+import Navbar from '../components/Navbar.vue'
+import { io } from "socket.io-client"
+import router from '@/main'
+
+const socket = io()
+const user = ref({} as any)
+
+onMounted(async () => {
+  user.value = await (await fetch("/api/user")).json()
+  socket.emit('token', user.value.token)
+  setTimeout(() => {
+    socket.emit('update-game-start', user.value.preferred_username)
+  }, 400)
+})
+</script>
