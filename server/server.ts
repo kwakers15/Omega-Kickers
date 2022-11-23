@@ -242,25 +242,42 @@ io.on('connection', (client: any) => {
       }
     })
 
+    async function delay(duration: number) {
+      return new Promise((resolve) => {
+        setTimeout(resolve, duration);
+      });
+    }
+
+    async function countDown(roomId: string, msg: string) {
+      io.to(roomId).emit('countdown', msg)
+      await delay(1000)
+    }
+
     client.on('update-game-start', async (username: string) => {
       const room = await rooms.findOne({ clientNames: { username } })
       if (room) {
         const index = room.clientNames.findIndex((o: { username: string }) => o.username === username)
+        const updatedClientIds = room.clientIds.map((idObj: { _id: string }, i: number) => {
+          if (i === index) {
+            idObj._id = client.id
+          }
+          return idObj
+        })
         await rooms.updateOne(
           { roomId: room.roomId },
           {
             $set: {
-              clientIds: room.clientIds.map((idObj: { _id: string }, i: number) => {
-                if (i === index) {
-                  idObj._id = client.id
-                }
-                return idObj
-              }),
+              clientIds: updatedClientIds,
               leaderId: room.leaderName === username ? client.id : room.leaderId,
             }
           }
         )
         client.join(room.roomId)
+        client.emit('game-config', await config.findOne({}))
+        await countDown(room.roomId, '3')
+        await countDown(room.roomId, '2')
+        await countDown(room.roomId, '1')
+        await countDown(room.roomId, 'Go!')
       }
     })
 
