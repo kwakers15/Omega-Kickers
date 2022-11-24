@@ -5,12 +5,13 @@ import { Collection, Db, MongoClient, ObjectId } from 'mongodb'
 import passport from 'passport'
 import { Issuer, Strategy } from 'openid-client'
 import { keycloak } from './secrets'
+import { delay, generateRandomSixDigitNumber, getStartingPosition } from './utils'
 
 const app = express()
 const http = require('http').Server(app)
 const io = require('socket.io')(http)
 const port = 8095
-const maxPlayers = 4
+const numPlayers = 4
 
 // mongodb
 const mongoUrl = 'mongodb://127.0.0.1:27017'
@@ -79,9 +80,6 @@ app.get("/api/user", async (req, res) => {
   res.json({})
 })
 
-function generateRandomSixDigitNumber() {
-  return String(Math.floor(100000 + Math.random() * 900000))
-}
 
 io.on('connection', (client: any) => {
   client.once("token", async (token: string) => {
@@ -123,7 +121,7 @@ io.on('connection', (client: any) => {
     })
 
     client.on('get-max-players', () => {
-      client.emit('get-max-players-reply', maxPlayers)
+      client.emit('get-max-players-reply', numPlayers)
     })
 
     // USE SOCKET DISCONNECTED TO REMOVE USERS FROM ROOMS AND DELETE ROOMS WHEN THEY ARE THE LAST ONE
@@ -167,7 +165,7 @@ io.on('connection', (client: any) => {
         if (room.clientNames.some((e: { username: string }) => e.username === username)) {
           result.duplicateUser = true
         }
-        else if (room.clientNames.length == maxPlayers) {
+        else if (room.clientNames.length == numPlayers) {
           result.full = true
         }
         else {
@@ -206,7 +204,9 @@ io.on('connection', (client: any) => {
           }
         )
         client.join(room.roomId)
+        client.emit('join-code', room.roomId)
         io.to(room.roomId).emit('updated-teams', room.team1, room.team2, room.unassigned)
+
       }
     })
 
@@ -242,12 +242,6 @@ io.on('connection', (client: any) => {
       }
     })
 
-    async function delay(duration: number) {
-      return new Promise((resolve) => {
-        setTimeout(resolve, duration);
-      });
-    }
-
     async function countDown(roomId: string, msg: string) {
       io.to(roomId).emit('countdown', msg)
       await delay(1000)
@@ -274,10 +268,29 @@ io.on('connection', (client: any) => {
         )
         client.join(room.roomId)
         client.emit('game-config', await config.findOne({}))
+        // USE ROOM TEAM1 AND TEAM2 TO DETERMINE INDEX INTO ARRAY
+        const startingPosition = getStartingPosition(numPlayers)
+        let teamIndex = -1
+        let team = ''
+        if ((teamIndex = room.team1.indexOf(username)) !== -1) {
+          team = 'team1Pos'
+        } else if ((teamIndex = room.team2.indexOf(username)) !== -1) {
+          team = 'team2Pos'
+        }
+        const posObj = startingPosition[team as keyof { team1Pos: {}[], team2Pos: {}[] }][teamIndex]
+        client.emit('start-position-info', posObj, startingPosition.team1Pos, startingPosition.team2Pos)
+        client.emit('team-info', team, room.team1, room.team2, numPlayers)
         await countDown(room.roomId, '3')
         await countDown(room.roomId, '2')
         await countDown(room.roomId, '1')
         await countDown(room.roomId, 'Go!')
+      }
+    })
+
+    client.on('updated-player-positions', async (team1Pos: { xPos: number, yPos: number }[], team2Pos: { xPos: number, yPos: number }[]) => {
+      const room = await rooms.findOne({ clientNames: { username } })
+      if (room) {
+        io.to(room.roomId).emit('updated-player-positions-reply', team1Pos, team2Pos)
       }
     })
 
@@ -286,6 +299,10 @@ io.on('connection', (client: any) => {
     //   console.log(client.id)
     //   console.log(client.rooms)
     // })
+
+    client.on('updated-ball-position', async (ballPos: { xPos: number, yPos: number }) => {
+
+    })
 
     async function leaveRoom() {
       const room = await rooms.findOne({ clientIds: { _id: client.id } })
@@ -324,6 +341,10 @@ io.on('connection', (client: any) => {
 
     client.on('leave-room', () => {
       leaveRoom()
+      client.emit('back-to-home')
+    })
+
+    client.on('leave-game', () => {
       client.emit('back-to-home')
     })
   })

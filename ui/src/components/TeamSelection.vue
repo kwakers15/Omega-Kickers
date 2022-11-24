@@ -4,6 +4,9 @@
     <b-jumbotron class="text-center w-100" header="Omega Kickers" lead="Created by Minjun Kwak" />
     <div class="mt-5" v-if="maxPlayers > 0">
       <b-container>
+        <b-row class="h5">
+          Join Code: {{ joinCode }}
+        </b-row>
         <b-row>
           <b-col>
             <TeamColumn :action="handleJoin" :roster="teamOneRoster" :teamNum="1" :maxPlayers="maxPlayers" />
@@ -44,6 +47,7 @@ import router from '@/main'
 const socket = io()
 const user = ref({} as any)
 const maxPlayers = ref(0)
+let joinCode = ref('')
 let unassignedPlayers: Ref<string[]> = ref([])
 let teamOneRoster: Ref<string[]> = ref([])
 let teamTwoRoster: Ref<string[]> = ref([])
@@ -52,7 +56,6 @@ socket.on('updated-teams', (rosterOne: string[], rosterTwo: string[], unassigned
   teamOneRoster.value = rosterOne
   teamTwoRoster.value = rosterTwo
   unassignedPlayers.value = unassignedRoster
-  console.log('inside of updated-teams', JSON.stringify(unassignedPlayers.value))
 })
 
 socket.on('back-to-home', () => {
@@ -61,6 +64,10 @@ socket.on('back-to-home', () => {
 
 socket.on('go-to-game', () => {
   router.push('/game')
+})
+
+socket.on('join-code', (code: string) => {
+  joinCode.value = code
 })
 
 socket.on('get-max-players-reply', (players: number) => {
@@ -77,7 +84,6 @@ function startGame() {
 
 function handleJoin(team: number) {
   const selectedRoster = team == 1 ? teamOneRoster : teamTwoRoster
-  console.log('selectedRoster:', JSON.stringify(selectedRoster.value))
   const index = unassignedPlayers.value.indexOf(user.value.preferred_username)
   if (index != -1 && selectedRoster.value.length < maxPlayers.value / 2) {
     unassignedPlayers.value.splice(index, 1)
