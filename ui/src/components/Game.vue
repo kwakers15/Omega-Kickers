@@ -1,9 +1,10 @@
 <template>
   <div>
     <Navbar :name="user?.name" />
-    <b-jumbotron class="text-center w-100" header="Omega Kickers" />
+    <b-jumbotron class="text-center w-100" header="Omega Kickers" lead="First to 3 wins!" />
     <div v-if="!showGame">{{ count }}</div>
     <div v-if="showGame" class="d-flex flex-column justify-content-center align-items-center">
+      <h3 class="font-weight-bold">Score: {{ team1Score }} - {{ team2Score }}</h3>
       <div class="d-flex flex-row justify-content-center align-items-center">
         <img src="../../img/goal.png" width="75px" height="125px" />
         <div class="position-relative border" id="field" :style="{ width: '65vw', height: '55vh' }">
@@ -16,7 +17,7 @@
             :currentPlayer="user.preferred_username" />
           <Player :key="i + team1.length + team2.length * 2" :id="i + (numPlayers / 2)" :xPos="team2Pos[i].xPos"
             :yPos="team2Pos[i].yPos" :teamIndex="1" v-for="player, i in team2" />
-          <Ball />
+          <Ball id="ball" :xPos="ballPos.xPos" :yPos="ballPos.yPos" />
         </div>
         <img src="../../img/goal.png" width="75px" height="125px" />
       </div>
@@ -43,11 +44,14 @@ let xPos = ref(0)
 let yPos = ref(0)
 let team = ref(-1)
 let teamIdx = ref(-1)
+let team1Score = ref(0)
+let team2Score = ref(0)
 let showGame = ref(false)
 let team1: Ref<string[]> = ref([])
 let team2: Ref<string[]> = ref([])
 let team1Pos: Ref<{ xPos: number, yPos: number }[]> = ref([])
 let team2Pos: Ref<{ xPos: number, yPos: number }[]> = ref([])
+let ballPos: Ref<{ xPos: number, yPos: number }> = ref({ xPos: 24, yPos: 30 })
 let numPlayers = ref(0)
 
 socket.on('game-config', (gameConfig: { ballSpeed: number, playerSpeed: number, obstacles: boolean, keepers: boolean }) => {
@@ -68,6 +72,11 @@ socket.on('countdown', (countDown: string) => {
   }
 })
 
+socket.on('updated-teams', (updatedTeam1: string[], updatedTeam2: string[]) => {
+  team1.value = updatedTeam1
+  team2.value = updatedTeam2
+})
+
 socket.on('start-position-info', (posObj: { xPos: number, yPos: number }, team1Positions: { xPos: number, yPos: number }[], team2Positions: { xPos: number, yPos: number }[]) => {
   xPos.value = posObj.xPos
   yPos.value = posObj.yPos
@@ -83,7 +92,7 @@ socket.on('team-info', (teamStr: string, teamOne: string[], teamTwo: string[], n
   teamIdx.value = team.value === 0 ? team1.value.indexOf(user.value.preferred_username) : team2.value.indexOf(user.value.preferred_username)
 })
 
-socket.on('updated-player-positions-reply', (team1Positions: {xPos: number, yPos: number}[], team2Positions: {xPos: number, yPos: number}[]) => {
+socket.on('updated-player-positions-reply', (team1Positions: { xPos: number, yPos: number }[], team2Positions: { xPos: number, yPos: number }[]) => {
   team1Pos.value = team1Positions
   team2Pos.value = team2Positions
 })
